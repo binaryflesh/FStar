@@ -249,6 +249,9 @@ function build_fstar() {
         if [[ $localTarget == "uregressions-ulong" ]]; then
             export OTHERFLAGS="--record_hints $OTHERFLAGS"
         fi
+        if [[ $localTarget == *"-nohints" ]]; then
+            export HINTS_ENABLED=
+        fi
 
         fetch_kremlin
 

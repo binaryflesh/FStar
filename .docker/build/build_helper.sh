@@ -11,10 +11,6 @@ ssh-add .ssh/id_rsa
 
 eval $(opam config env)
 
-if [[ $target = *"-nohints" ]]; then
-    export HINTS_ENABLED=
-fi
-
 echo $(date -u "+%Y-%m-%d %H:%M:%S") >> $out_file
 
 tail -f $out_file &
