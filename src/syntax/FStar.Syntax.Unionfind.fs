@@ -81,6 +81,7 @@ let update_in_tx (r:ref<'a>) (x:'a) = ()
 (* private *)
 let get_term_graph () = (get()).term_graph
 let get_version () = (get()).version
+let get_version_string () = get_version () |> version_to_string
 
 (* private *)
 let set_term_graph tg =
