@@ -91,7 +91,7 @@ let new_uvar reason wl r gamma binders k should_check meta : ctx_uvar * term * w
               } in
     ctx_uvar, t, {wl with wl_implicits=imp::wl.wl_implicits}
 
-let copy_uvar u (bs:binders) t wl =
+let copy_uvar u (bs:binders) t wl : ctx_uvar * term * worklist =
     let env = {wl.tcenv with gamma = u.ctx_uvar_gamma } in
     let env = Env.push_binders env bs in
     new_uvar ("copy:"^u.ctx_uvar_reason) wl u.ctx_uvar_range env.gamma
@@ -650,7 +650,7 @@ let destruct_flex_t t wl : flex_t * worklist =
       let args_sol_s = List.map (fun (a, i) -> SS.subst' s a, i) args_sol in
       let all_args = args_sol_s @ args in
       let t = S.mk_Tm_app t_v all_args None t.pos in
-      Unionfind.change uv.ctx_uvar_head sol;
+      UF.change uv.ctx_uvar_head sol;
       (t, v, all_args), wl
 
     | _ -> failwith "Not a flex-uvar"
@@ -675,7 +675,7 @@ let u_abs (k : typ) (ys : binders) (t : term) : term =
     else let c = Subst.subst_comp (U.rename_binders xs ys) c in
          U.abs ys t (Some (U.residual_comp_of_comp c))
 
-let solve_prob' resolve_ok prob logical_guard uvis wl =
+let solve_prob' resolve_ok prob logical_guard uvis wl : worklist =
     def_check_prob "solve_prob'" prob;
     let phi = match logical_guard with
       | None -> U.t_true
@@ -789,7 +789,7 @@ let restrict_ctx (tgt:ctx_uvar) (src:ctx_uvar) wl =
     let pfx, _ = maximal_prefix tgt.ctx_uvar_binders src.ctx_uvar_binders in
     let g = gamma_until src.ctx_uvar_gamma pfx in
     let _, src', wl = new_uvar ("restrict:"^src.ctx_uvar_reason) wl src.ctx_uvar_range g pfx src.ctx_uvar_typ src.ctx_uvar_should_check src.ctx_uvar_meta in
-    Unionfind.change src.ctx_uvar_head src';
+    UF.change src.ctx_uvar_head src';
     wl
 
 let restrict_all_uvars (tgt:ctx_uvar) (sources:list<ctx_uvar>) wl  =
@@ -2170,7 +2170,7 @@ and solve_t_flex_flex env orig wl (lhs:flex_t) (rhs:flex_t) : solution =
                  in
                  let sol =
                      let s1 = TERM(u_lhs, U.abs binders_lhs w_app (Some (U.residual_tot t_res_lhs))) in
-                     if Unionfind.equiv u_lhs.ctx_uvar_head u_rhs.ctx_uvar_head
+                     if UF.equiv u_lhs.ctx_uvar_head u_rhs.ctx_uvar_head
                      then [s1]
                      else let s2 = TERM(u_rhs, U.abs binders_rhs w_app (Some (U.residual_tot t_res_lhs))) in
                           [s1;s2]
@@ -2263,7 +2263,9 @@ and solve_t' (env:Env.env) (problem:tprob) (wl:worklist) : solution =
               in
               let solve_sub_probs_no_smt env wl =
                   solve_head_then wl (fun ok wl ->
-                      assert ok; //defer not allowed
+                      //defer not allowed
+                      if not ok then failwith "impossible (solve_sub_probs_no_smt)";
+                      (* assert ok; *)
                       let subprobs, wl = mk_sub_probs wl in
                       let wl = solve_prob orig None [] wl in
                       solve env (attempt subprobs wl))
@@ -3586,7 +3588,7 @@ let teq_nosmt (env:env) (t1:typ) (t2:typ) : option<guard_t> =
 
 let resolve_implicits' env must_total forcelax g =
   let rec unresolved ctx_u =
-    match (Unionfind.find ctx_u.ctx_uvar_head) with
+    match (UF.find ctx_u.ctx_uvar_head) with
     | Some r ->
         begin match ctx_u.ctx_uvar_meta with
         | None -> false
