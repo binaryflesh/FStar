@@ -1918,6 +1918,7 @@ and solve_binders (env:Env.env) (bs1:binders) (bs2:binders) (orig:prob) (wl:work
      solve env (attempt sub_probs wl)
 
 and try_solve_without_smt_or_else
+        (orig:prob)
         (env:Env.env) (wl:worklist)
         (try_solve: (Env.env -> worklist -> solution))
         (else_solve: Env.env -> worklist -> (prob * lstring) -> solution)
@@ -1935,6 +1936,11 @@ and try_solve_without_smt_or_else
       let wl = {wl with wl_implicits=wl.wl_implicits@imps} in
       solve env wl
     | Failed (p, s) ->
+      if debug env <| Options.Other "Rel"
+      then BU.print3 "Failed to solve %s because sub-problem %s is not solvable without SMT because %s"
+                   (prob_to_string env orig)
+                   (prob_to_string env p)
+                   (Thunk.force s);
       UF.rollback tx;
       else_solve env wl (p,s)
 
@@ -2271,11 +2277,6 @@ and solve_t' (env:Env.env) (problem:tprob) (wl:worklist) : solution =
                       solve env (attempt subprobs wl))
               in
               let unfold_and_retry d env wl (prob, reason) =
-                   if debug env <| Options.Other "Rel"
-                   then BU.print3 "Failed to solve %s because sub-problem %s is not solvable without SMT because %s"
-                                (prob_to_string env orig)
-                                (prob_to_string env prob)
-                                (Thunk.force reason);
                    match N.unfold_head_once env t1,
                          N.unfold_head_once env t2
                    with
@@ -2317,7 +2318,7 @@ and solve_t' (env:Env.env) (problem:tprob) (wl:worklist) : solution =
               begin
               match d with
               | Some d when wl.smt_ok && not treat_as_injective ->
-                try_solve_without_smt_or_else env wl
+                try_solve_without_smt_or_else orig env wl
                     solve_sub_probs_no_smt
                     (unfold_and_retry d)
 
