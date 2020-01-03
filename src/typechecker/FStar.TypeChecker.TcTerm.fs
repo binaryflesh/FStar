@@ -330,6 +330,18 @@ let check_smt_pat env t bs c =
             check_no_smt_theory_symbols env pats
         | _ -> failwith "Impossible"
 
+
+let rec canon_arrow t =
+  match (SS.compress t).n with
+  | Tm_arrow (bs, c) ->
+      let cn = match c.n with
+               | Total (t, u) -> Total (canon_arrow t, u)
+               | _ -> c.n
+      in
+      let c = { c with n = cn } in
+      flat_arrow bs c
+  | _ -> t
+
 (************************************************************************************************************)
 (* Building the environment for the body of a let rec;                                                      *)
 (* guards the recursively bound names with a termination check                                              *)
@@ -373,6 +385,7 @@ let guard_letrecs env actuals expected_c : list<(lbname*typ*univ_names)> =
 
         let previous_dec = decreases_clause actuals expected_c in
         let guard_one_letrec (l, t, u_names) =
+            let t = canon_arrow t in
             match (SS.compress t).n with
                 | Tm_arrow(formals, c) ->
                   //make sure they all have non-null names
@@ -1381,6 +1394,7 @@ and tc_abs env (top:term) (bs:binders) (body:term) : term * lcomp * guard_t =
           None, bs, [], None, envbody, body, g_env
 
       | Some t ->
+          let t = canon_arrow t in
           let t = SS.compress t in
           let rec as_function_typ norm t =
               match (SS.compress t).n with
