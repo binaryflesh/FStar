@@ -2604,26 +2604,45 @@ and tc_eqn scrutinee env branch
           let _ = if Env.debug env <| Options.Other "LayeredEffects" then
             BU.print_string "Typechecking pat_bv_tms ...\n" in
 
-          //typecheck the pat_bv_tms, to resolve implicits etc.
-          //AR: keep adding pat bvs to the env as we move from left to right
-          let _, pat_bv_tms =
-            List.fold_left2 (fun (env, acc) pat_bv_tm bv ->
-              let expected_t = U.arrow [S.null_binder pat_t] (S.mk_Total' bv.sort (Env.new_u_univ () |> Some)) in
-              //note, we are explicitly setting lax = true, since these terms apply projectors
-              //which we know are sound as per the branch guard, but hard to convince the typechecker
-              let env = { (Env.set_expected_typ env expected_t) with lax = true } in
-              let pat_bv_tm = tc_trivial_guard env pat_bv_tm |> fst in
-              Env.push_bv env bv, acc@[pat_bv_tm]
-            ) (env, []) pat_bv_tms pat_bvs in
+          (*
+           * AR: typecheck the pat_bv_tms, to resolve implicits etc.
+           * 
+           * recall that pat_bv_tms are terms that are definitionally equal to the pat_bvs
+           *   but are in terms of projectors on the scrutinee term
+           * these will be used to substitute pat bvs in the computation type
+           * of the corresponding branch
+           *
+           * a pat_bv_tm's expected type is the sort of the corresponding pat bv
+           * however, we need to be careful about dependent pat bvs of the like (a:Type) (x:a)
+           *
+           * so when we typecheck a pat_bv_tm with expected type as corresponding pat_bv.sort,
+           *   we substitute the already seen pat bvs with their pat bv tms in the sort
+           *)
 
+          //first apply the pat_bv_tms to the scrutinee term
           let pat_bv_tms = pat_bv_tms |> List.map (fun pat_bv_tm ->
             mk_Tm_app pat_bv_tm [scrutinee_tm |> S.as_arg] None Range.dummyRange
-          ) |> List.map (N.normalize [Env.Beta] env) in  //a bit of beta to simplify the term
+          ) in
+
+          let _, pat_bv_tms =
+            //note, we are explicitly setting lax = true, since these terms apply projectors
+            //which we know are sound as per the branch guard, but hard to convince the typechecker
+            //AR: TODO: should we instead do the non-lax typechecking but drop the logical payload in the guard?
+            let env = { (Env.push_bv env scrutinee) with lax = true } in
+            List.fold_left2 (fun (substs, acc) pat_bv_tm bv ->
+              let expected_t = SS.subst substs bv.sort in
+              let pat_bv_tm = tc_trivial_guard (Env.set_expected_typ env expected_t) pat_bv_tm |> fst in
+              substs@[NT (bv, pat_bv_tm)], acc@[pat_bv_tm]
+            ) ([], []) pat_bv_tms pat_bvs in
+
+          //a bit of beta to simplify the term
+          let pat_bv_tms = pat_bv_tms |> List.map (N.normalize [Env.Beta] env) in
 
           let _ =
             if Env.debug env <| Options.Other "LayeredEffects" then
-              BU.print1 "tc_eqn: typechecked pat_bv_tms %s"
+              BU.print2 "tc_eqn: typechecked pat_bv_tms %s (pat_bvs : %s)\n"
                 (List.fold_left (fun s t -> s ^ ";" ^ (Print.term_to_string t)) "" pat_bv_tms)
+                (List.fold_left (fun s t -> s ^ ";" ^ (Print.bv_to_string t)) "" pat_bvs)
             else () in
 
           TcUtil.close_layered_lcomp env pat_bvs pat_bv_tms c_weak
